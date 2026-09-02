@@ -139,6 +139,11 @@ body {
   font-size: 0.9rem;
 }
 
+.composer-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 button {
   border: none;
   border-radius: 999px;
@@ -148,6 +153,7 @@ button {
   color: #fff;
   background: var(--primary);
   cursor: pointer;
+  transition: background 0.15s;
 }
 
 button:hover:not(:disabled) {
@@ -157,6 +163,17 @@ button:hover:not(:disabled) {
 button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f0f4ff;
+  color: var(--text);
 }
 
 .loading {

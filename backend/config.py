@@ -11,6 +11,8 @@ if not os.getenv("LLM_API_KEY"):
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+MARKET_DATA_PROVIDER = os.getenv("MARKET_DATA_PROVIDER", "")
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 
 SYSTEM_PROMPT = """你是一名专业的机械工程助教，擅长用清晰、准确的方式解答机械工程专业问题。
 

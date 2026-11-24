@@ -3,44 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>机械工程问答助手</title>
+    <title>QuantPilot · A 股实时看盘</title>
     <link rel="stylesheet" href="/css/style.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
-    />
     <script defer src="/js/app.js"></script>
   </head>
   <body>
-    <div class="page">
-      <header class="header">
-        <div>
-          <h1>机械工程问答助手</h1>
-          <p>输入力学、机构、制图、设计等问题，AI 将为你解答。</p>
-        </div>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand"><div class="brand-mark">Q</div><div><strong>QuantPilot</strong><span>A 股实时量化看盘终端</span></div></div>
+        <div class="market-strip"><span id="market-session" class="session-label">市场状态：检查中</span><span id="data-source">数据源：未配置</span><span id="socket-status" class="socket-badge offline">● 离线</span></div>
       </header>
-
-      <main class="main">
-        <section id="chat" class="chat" aria-live="polite"></section>
-
-        <form id="chat-form" class="composer">
-          <label class="sr-only" for="question">你的问题</label>
-          <textarea
-            id="question"
-            name="question"
-            rows="4"
-            placeholder="例如：什么是应力集中？四连杆机构有哪些应用？"
-            maxlength="2000"
-            required
-          ></textarea>
-          <div class="composer-actions">
-            <span id="char-count" class="char-count">0 / 2000</span>
-            <button id="submit-btn" type="submit">发送问题</button>
+      <main class="terminal">
+        <aside class="watchlist-panel panel">
+          <div class="panel-heading"><div><span class="section-label">WATCHLIST</span><h2>自选股</h2></div><button id="refresh-btn" class="icon-btn" title="刷新">↻</button></div>
+          <form id="watchlist-form" class="watchlist-add"><input id="symbol-input" placeholder="输入代码，如 000001.SZ" autocomplete="off" /><button type="submit">+</button></form>
+          <div id="watchlist" class="watchlist"><div class="empty-list">添加股票代码开始看盘</div></div>
+          <div class="watchlist-note">数据状态透明展示 · 第一阶段仅观察和信号，不执行真实下单</div>
+        </aside>
+        <section class="main-market">
+          <div class="toolbar panel">
+            <div><span class="section-label">REAL-TIME MARKET</span><h1 id="selected-symbol">尚未选择股票</h1></div>
+            <div class="toolbar-actions"><button class="chart-tab active" data-chart="intraday">分时</button><button class="chart-tab" data-chart="daily">日 K</button><button id="history-btn" class="secondary-btn">加载历史</button></div>
           </div>
-        </form>
+          <div class="quote-row">
+            <div class="quote-card panel"><span>最新价</span><strong id="last-price">—</strong><em id="price-change">—</em></div>
+            <div class="quote-card panel"><span>今开 / 昨收</span><strong id="open-close">—</strong><em>价格</em></div>
+            <div class="quote-card panel"><span>最高 / 最低</span><strong id="high-low">—</strong><em>日内区间</em></div>
+            <div class="quote-card panel"><span>成交量</span><strong id="volume">—</strong><em id="quote-time">等待数据</em></div>
+          </div>
+          <article class="chart-panel panel">
+            <div class="panel-heading"><div><span class="section-label">PRICE ACTION</span><h2 id="chart-title">实时分时走势</h2></div><span id="latency" class="status-chip neutral">延迟：—</span></div>
+            <div class="chart-wrap"><canvas id="market-chart" width="1000" height="420"></canvas><div id="chart-empty" class="chart-empty"><div class="empty-icon">⌁</div><strong>等待真实行情接入</strong><p>配置 Tushare 或其他 A 股行情 provider 后，实时分时与 K 线会显示在这里。</p></div></div>
+          </article>
+          <div class="bottom-grid">
+            <article class="panel signal-panel"><div class="panel-heading"><div><span class="section-label">SIGNALS</span><h2>策略信号</h2></div><span class="status-chip neutral">只读</span></div><div id="signals" class="empty-list">暂无信号</div></article>
+            <article class="panel log-panel"><div class="panel-heading"><div><span class="section-label">SYSTEM LOG</span><h2>运行状态</h2></div></div><div id="logs" class="logs"></div></article>
+          </div>
+        </section>
       </main>
     </div>
   </body>

@@ -1,127 +1,178 @@
-const chatEl = document.getElementById("chat");
-const formEl = document.getElementById("chat-form");
-const questionEl = document.getElementById("question");
-const submitBtn = document.getElementById("submit-btn");
-const charCountEl = document.getElementById("char-count");
+const state = { symbols: [], selected: null, quotes: new Map(), points: [], socket: null };
+const $ = (selector) => document.querySelector(selector);
 
-const MAX_LENGTH = 2000;
-
-function updateCharCount() {
-  const length = questionEl.value.length;
-  charCountEl.textContent = `${length} / ${MAX_LENGTH}`;
+function log(message, level = "info") {
+  const row = document.createElement("div");
+  row.className = `log-row ${level}`;
+  row.innerHTML = `<span>${new Date().toLocaleTimeString("zh-CN")}</span><b>${message}</b>`;
+  $("#logs").prepend(row);
+  while ($("#logs").children.length > 8) $("#logs").lastElementChild.remove();
 }
 
-function renderEmptyState() {
-  chatEl.innerHTML = `
-    <div class="empty-state">
-      还没有对话。试试问：<br />
-      “什么是莫尔圆？” 或 “齿轮传动比怎么计算？”
-    </div>
-  `;
+function setSocketStatus(online, text) {
+  const badge = $("#socket-status");
+  badge.className = `socket-badge ${online ? "online" : "offline"}`;
+  badge.textContent = `● ${text}`;
 }
 
-function createMessage(role, content, options = {}) {
-  const message = document.createElement("article");
-  message.className = `message message-${role}`;
-
-  const label = document.createElement("div");
-  label.className = "message-label";
-  label.textContent = role === "user" ? "你的问题" : "AI 回答";
-
-  const body = document.createElement("div");
-  body.className = "message-content";
-
-  if (options.loading) {
-    body.innerHTML = '<div class="loading">正在思考...</div>';
-  } else if (options.error) {
-    body.innerHTML = `<p class="error-text">${escapeHtml(content)}</p>`;
-  } else if (role === "assistant") {
-    body.innerHTML = marked.parse(content);
-    renderMathInElement(body, {
-      delimiters: [
-        { left: "$$", right: "$$", display: true },
-        { left: "$", right: "$", display: false },
-      ],
-      throwOnError: false,
-    });
-  } else {
-    body.textContent = content;
-  }
-
-  message.append(label, body);
-  return message;
+function formatPrice(value) {
+  return value == null ? "—" : Number(value).toFixed(2);
 }
 
-function escapeHtml(text) {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function removeEmptyState() {
-  const empty = chatEl.querySelector(".empty-state");
-  if (empty) {
-    empty.remove();
-  }
-}
-
-async function submitQuestion(question) {
-  removeEmptyState();
-
-  chatEl.appendChild(createMessage("user", question));
-  const assistantMessage = createMessage("assistant", "", { loading: true });
-  chatEl.appendChild(assistantMessage);
-  chatEl.scrollTop = chatEl.scrollHeight;
-
-  submitBtn.disabled = true;
-
-  try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const detail = data.detail || "请求失败，请稍后重试。";
-      assistantMessage.replaceWith(
-        createMessage("assistant", detail, { error: true })
-      );
-      return;
-    }
-
-    assistantMessage.replaceWith(createMessage("assistant", data.answer));
-  } catch (error) {
-    assistantMessage.replaceWith(
-      createMessage("assistant", "网络异常，请确认后端服务已启动。", {
-        error: true,
-      })
-    );
-  } finally {
-    submitBtn.disabled = false;
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-}
-
-formEl.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  const question = questionEl.value.trim();
-  if (!question) {
+function renderWatchlist() {
+  const container = $("#watchlist");
+  if (!state.symbols.length) {
+    container.innerHTML = '<div class="empty-list">添加股票代码开始看盘</div>';
     return;
   }
+  container.innerHTML = state.symbols.map((symbol) => {
+    const quote = state.quotes.get(symbol);
+    const price = quote?.price;
+    const change = price != null && quote?.previous_close ? ((price - quote.previous_close) / quote.previous_close) * 100 : null;
+    return `<button class="watch-item ${symbol === state.selected ? "selected" : ""}" data-symbol="${symbol}">
+      <span><b>${symbol}</b><small>${quote?.name || "等待行情"}</small></span>
+      <span class="watch-price"><b>${formatPrice(price)}</b><small class="${change >= 0 ? "up" : "down"}">${change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</small></span>
+    </button>`;
+  }).join("");
+  container.querySelectorAll("[data-symbol]").forEach((button) => button.addEventListener("click", () => selectSymbol(button.dataset.symbol)));
+}
 
-  questionEl.value = "";
-  updateCharCount();
-  await submitQuestion(question);
+function renderQuote(quote) {
+  if (!quote) return;
+  $("#selected-symbol").textContent = `${quote.symbol}${quote.name ? ` · ${quote.name}` : ""}`;
+  $("#last-price").textContent = formatPrice(quote.price);
+  $("#open-close").textContent = `${formatPrice(quote.open)} / ${formatPrice(quote.previous_close)}`;
+  $("#high-low").textContent = `${formatPrice(quote.high)} / ${formatPrice(quote.low)}`;
+  $("#volume").textContent = quote.volume == null ? "—" : Number(quote.volume).toLocaleString("zh-CN");
+  $("#quote-time").textContent = quote.timestamp ? new Date(quote.timestamp).toLocaleTimeString("zh-CN") : "—";
+  const change = quote.price != null && quote.previous_close ? ((quote.price - quote.previous_close) / quote.previous_close) * 100 : null;
+  $("#price-change").textContent = change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
+  $("#price-change").className = change >= 0 ? "up" : "down";
+  $("#latency").textContent = `延迟：${quote.latency_ms == null ? "—" : `${quote.latency_ms} ms`}`;
+}
+
+function drawChart() {
+  const canvas = $("#market-chart");
+  const empty = $("#chart-empty");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state.points.length < 2) {
+    empty.classList.add("visible");
+    return;
+  }
+  empty.classList.remove("visible");
+  const values = state.points.map((point) => point.price).filter(Number.isFinite);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  ctx.strokeStyle = "#263651";
+  ctx.lineWidth = 1;
+  for (let y = 40; y < 400; y += 72) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+  ctx.strokeStyle = "#52e2b0";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  state.points.forEach((point, index) => {
+    const x = (index / (state.points.length - 1)) * canvas.width;
+    const y = 380 - ((point.price - min) / range) * 320;
+    index ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function selectSymbol(symbol) {
+  state.selected = symbol;
+  state.points = [];
+  renderWatchlist();
+  $("#selected-symbol").textContent = symbol;
+  if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ type: "subscribe", symbols: state.symbols }));
+  log(`已选择 ${symbol}`);
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail?.message || data.detail || "请求失败");
+  return data;
+}
+
+async function loadWatchlist() {
+  try {
+    const data = await request("/api/market/watchlist");
+    state.symbols = data.symbols || [];
+    (data.quotes || []).forEach((quote) => state.quotes.set(quote.symbol, quote));
+    state.selected = state.symbols[0] || null;
+    renderWatchlist();
+    if (state.selected) $("#selected-symbol").textContent = state.selected;
+  } catch (error) { log(error.message, "error"); }
+}
+
+function connectSocket() {
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  state.socket = new WebSocket(`${protocol}://${location.host}/ws/market`);
+  state.socket.onopen = () => {
+    setSocketStatus(true, "已连接");
+    state.socket.send(JSON.stringify({ type: "subscribe", symbols: state.symbols }));
+    log("WebSocket 已连接");
+  };
+  state.socket.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === "market_status") {
+      const status = message.data;
+      $("#data-source").textContent = `数据源：${status.provider}`;
+      $("#market-session").textContent = `市场状态：${status.session}`;
+      return;
+    }
+    if (message.type === "quote") {
+      message.data.forEach((quote) => {
+        state.quotes.set(quote.symbol, quote);
+        if (quote.symbol === state.selected && Number.isFinite(Number(quote.price))) state.points.push({ price: Number(quote.price) });
+      });
+      renderWatchlist();
+      renderQuote(state.quotes.get(state.selected));
+      drawChart();
+      return;
+    }
+    if (message.type === "error") log(message.data.message, "error");
+  };
+  state.socket.onclose = () => {
+    setSocketStatus(false, "重连中");
+    log("行情连接断开，正在重连", "error");
+    setTimeout(connectSocket, 3000);
+  };
+}
+
+$("#watchlist-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = $("#symbol-input");
+  const symbol = input.value.trim().toUpperCase();
+  if (!symbol || state.symbols.includes(symbol)) return;
+  state.symbols.push(symbol);
+  input.value = "";
+  await request("/api/market/watchlist", { method: "PUT", body: JSON.stringify({ symbols: state.symbols }) });
+  selectSymbol(symbol);
+  renderWatchlist();
 });
 
-questionEl.addEventListener("input", updateCharCount);
+$("#refresh-btn").addEventListener("click", () => {
+  if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ type: "ping" }));
+});
 
-renderEmptyState();
-updateCharCount();
+$("#history-btn").addEventListener("click", async () => {
+  if (!state.selected) return;
+  try {
+    const data = await request(`/api/market/history?symbol=${encodeURIComponent(state.selected)}&interval=1d&limit=240`);
+    state.points = (data.bars || []).map((bar) => ({ price: Number(bar.close) })).filter((point) => Number.isFinite(point.price));
+    $("#chart-title").textContent = "日线收盘走势";
+    drawChart();
+    const signal = await request(`/api/market/signal?symbol=${encodeURIComponent(state.selected)}`);
+    $("#signals").innerHTML = signal.signal
+      ? `<div class="signal-row"><b>${signal.signal.toUpperCase()}</b><span>${signal.reason}</span><small>${signal.timestamp || ""}</small></div>`
+      : `<div class="empty-list">${signal.reason}</div>`;
+    log(`${state.selected} 历史数据已加载`);
+  } catch (error) {
+    log(error.message, "error");
+  }
+});
+
+window.addEventListener("resize", drawChart);
+loadWatchlist().then(connectSocket);
